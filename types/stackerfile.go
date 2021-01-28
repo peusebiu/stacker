@@ -263,6 +263,11 @@ func NewStackerfile(stackerfile string, substitutions []string) (*Stackerfile, e
 
 		// Set the directory with the location where the layer was defined
 		layer.referenceDirectory = sf.ReferenceDirectory
+
+		// update Layer.Import from interface{} to map[string]string
+		if err := layer.UpdateLayerImports(); err != nil {
+			return nil, err
+		}
 	}
 
 	return &sf, err
@@ -334,7 +339,7 @@ func (s *Stackerfile) DependencyOrder(sfm StackerFiles) ([]string, error) {
 			// layer which has not been processed
 			allStackerImportsProcessed := true
 			for _, imp := range imports {
-				url, err := NewDockerishUrl(imp)
+				url, err := NewDockerishUrl(imp["path"])
 				if err != nil {
 					return nil, err
 				}
