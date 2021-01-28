@@ -16,10 +16,27 @@ import (
 )
 
 // download with caching support in the specified cache dir.
-func Download(cacheDir string, url string, progress bool) (string, error) {
+func Download(cacheDir string, url string, progress bool, hash string) (string, error) {
 	name := path.Join(cacheDir, path.Base(url))
 
+	remoteHash, remoteSize, err := getHttpFileInfo(url)
+	if err != nil {
+		// Needed for "working offline"
+		// See https://github.com/anuvu/stacker/issues/44
+		log.Infof("cannot obtain file info of %s", url)
+	}
+	log.Debugf("Remote file: hash: %s length: %s", remoteHash, remoteSize)
+	if hash != "" && hash != remoteHash {
+		return "", errors.Errorf("The requested hash of %s import is different than the actual hash: %s != %s",
+			url, hash, remoteHash)
+	}
+
 	if fi, err := os.Stat(name); err == nil {
+		// Couldn't get remoteHash then use cached copy of import
+		if remoteHash == "" {
+			log.Infof("Couldn't obtain file info of %s, using cached copy", url)
+			return name, nil
+		}
 		// File is found in cache
 		// need to check if cache is valid before using it
 		localHash, err := lib.HashFile(name, false)

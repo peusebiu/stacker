@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -125,21 +126,58 @@ func (l *Layer) ParseFullCommand() ([]string, error) {
 	})
 }
 
-func (l *Layer) ParseImport() ([]string, error) {
-	rawImports, err := l.getStringOrStringSlice(l.Import, func(s string) ([]string, error) {
-		return strings.Split(s, "\n"), nil
-	})
-	if err != nil {
-		return nil, err
-	}
+func (l *Layer) CleanImports() error {
+	var rawImports []map[string]string
+	imports, ok := l.Import.([]interface{})
 
-	var absImports []string
-	for _, rawImport := range rawImports {
-		absImport, err := l.getAbsPath(rawImport)
-		if err != nil {
-			return nil, err
+	if ok {
+		for _, v := range imports {
+			// check if it's map
+			m, ok := v.(map[interface{}]interface{})
+			if ok {
+				rawImports = append(rawImports, map[string]string{
+					"path": fmt.Sprintf("%v", m["path"]),
+					"hash": fmt.Sprintf("%v", m["hash"]),
+				})
+				continue
+			}
+
+			// check if it's string
+			s, ok := v.(string)
+			if ok {
+				rawImports = append(rawImports, map[string]string{
+					"path": s,
+					"hash": "",
+				})
+				continue
+			}
+			return errors.Errorf("Unsupported import type: %v", v)
 		}
-		absImports = append(absImports, absImport)
+	}
+	l.Import = rawImports
+	return nil
+}
+
+func (l *Layer) ParseImport() ([]map[string]string, error) {
+	rawImports, ok := l.Import.([]map[string]string)
+	if !ok {
+		err := l.CleanImports()
+		if err != nil {
+			return []map[string]string{}, err
+		}
+	}
+	var absImports []map[string]string
+	for _, rawImport := range rawImports {
+		for k, v := range rawImport {
+			if k == "path" {
+				absImport, err := l.getAbsPath(v)
+				if err != nil {
+					return nil, err
+				}
+				rawImport["path"] = absImport
+				absImports = append(absImports, rawImport)
+			}
+		}
 	}
 	return absImports, nil
 }

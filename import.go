@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strings"
 
 	"github.com/anuvu/stacker/lib"
 	"github.com/anuvu/stacker/log"
@@ -82,13 +83,35 @@ func chmodParentAndRemove(destpath string) (func(), error) {
 	return func() { os.Chmod(dir, orig.Mode()) }, os.RemoveAll(destpath)
 }
 
-func importFile(imp string, cacheDir string) (string, error) {
+func verifyImportFileHash(imp string, hash string) error {
+	if len(hash) == 0 {
+		return nil
+	}
+	actualHash, err := lib.HashFile(imp, false)
+	if err != nil {
+		return err
+	}
+
+	actualHash = strings.TrimPrefix(actualHash, "sha256:")
+	if actualHash != hash {
+		return errors.Errorf("The requested hash of %s import is different than the actual hash: %s != %s",
+			imp, hash, actualHash)
+	}
+
+	return nil
+}
+
+func importFile(imp string, cacheDir string, hash string) (string, error) {
 	e1, err := os.Lstat(imp)
 	if err != nil {
 		return "", errors.Wrapf(err, "couldn't stat import %s", imp)
 	}
 
 	if !e1.IsDir() {
+		err := verifyImportFileHash(imp, hash)
+		if err != nil {
+			return "", err
+		}
 		needsCopy := false
 		dest := path.Join(cacheDir, path.Base(imp))
 		e2, err := os.Stat(dest)
@@ -99,7 +122,6 @@ func importFile(imp string, cacheDir string) (string, error) {
 			if err != nil {
 				return "", err
 			}
-
 			needsCopy = differ
 		}
 
@@ -199,7 +221,7 @@ func importFile(imp string, cacheDir string) (string, error) {
 
 }
 
-func acquireUrl(c types.StackerConfig, storage types.Storage, i string, cache string, progress bool) (string, error) {
+func acquireUrl(c types.StackerConfig, storage types.Storage, i string, cache string, progress bool, hash string) (string, error) {
 	url, err := types.NewDockerishUrl(i)
 	if err != nil {
 		return "", err
@@ -207,10 +229,10 @@ func acquireUrl(c types.StackerConfig, storage types.Storage, i string, cache st
 
 	// It's just a path, let's copy it to .stacker.
 	if url.Scheme == "" {
-		return importFile(i, cache)
+		return importFile(i, cache, hash)
 	} else if url.Scheme == "http" || url.Scheme == "https" {
 		// otherwise, we need to download it
-		return Download(cache, i, progress)
+		return Download(cache, i, progress, hash)
 	} else if url.Scheme == "stacker" {
 		// we always Grab() things from stacker://, because we need to
 		// mount the container's rootfs to get them and don't
@@ -222,13 +244,13 @@ func acquireUrl(c types.StackerConfig, storage types.Storage, i string, cache st
 			return "", err
 		}
 		defer cleanup()
-		return p, Grab(c, storage, snap, url.Path, cache)
+		return p, Grab(c, storage, snap, url.Path, cache, hash)
 	}
 
 	return "", errors.Errorf("unsupported url scheme %s", i)
 }
 
-func CleanImportsDir(c types.StackerConfig, name string, imports []string, cache *BuildCache) error {
+func CleanImportsDir(c types.StackerConfig, name string, imports []map[string]string, cache *BuildCache) error {
 	dir := path.Join(c.StackerDir, "imports", name)
 
 	cacheEntry, cacheHit := cache.Cache[name]
@@ -243,9 +265,9 @@ func CleanImportsDir(c types.StackerConfig, name string, imports []string, cache
 	// make sure we invalidate the cached version.
 	for _, i := range imports {
 		for cached := range cacheEntry.Imports {
-			if path.Base(cached) == path.Base(i) && cached != i {
-				log.Infof("%s url changed to %s, pruning cache", cached, i)
-				err := os.RemoveAll(path.Join(dir, path.Base(i)))
+			if path.Base(cached) == path.Base(i["path"]) && cached != i["path"] {
+				log.Infof("%s url changed to %s, pruning cache", cached, i["path"])
+				err := os.RemoveAll(path.Join(dir, path.Base(i["path"])))
 				if err != nil {
 					return err
 				}
@@ -256,7 +278,7 @@ func CleanImportsDir(c types.StackerConfig, name string, imports []string, cache
 	return nil
 }
 
-func Import(c types.StackerConfig, storage types.Storage, name string, imports []string, progress bool) error {
+func Import(c types.StackerConfig, storage types.Storage, name string, imports []map[string]string, progress bool) error {
 	dir := path.Join(c.StackerDir, "imports", name)
 
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -269,7 +291,7 @@ func Import(c types.StackerConfig, storage types.Storage, name string, imports [
 	}
 
 	for _, i := range imports {
-		name, err := acquireUrl(c, storage, i, dir, progress)
+		name, err := acquireUrl(c, storage, i["path"], dir, progress, i["hash"])
 		if err != nil {
 			return err
 		}
