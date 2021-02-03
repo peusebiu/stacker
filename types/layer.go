@@ -158,11 +158,11 @@ func (l *Layer) UpdateLayerImports() error {
 
 			_, ok = v.(map[string]string)
 			if ok {
-				//nothing to do
+				//nothing to do, already done earlier, this is probably the cache
 				continue
 			}
-			
-			return errors.Errorf("Unsupported import type: %v", v)
+
+			return errors.Errorf("Unsupported import type: %#v", v)
 		}
 	}
 
