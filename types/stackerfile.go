@@ -247,6 +247,7 @@ func NewStackerfile(stackerfile string, substitutions []string) (*Stackerfile, e
 		return nil, err
 	}
 
+
 	// Unmarshal to save the data in the right structure to enable further processing
 	if err := yaml.Unmarshal(layersContent, &sf.internal); err != nil {
 		return nil, err
@@ -263,6 +264,11 @@ func NewStackerfile(stackerfile string, substitutions []string) (*Stackerfile, e
 
 		// Set the directory with the location where the layer was defined
 		layer.referenceDirectory = sf.ReferenceDirectory
+
+		// update Layer.Import from interface{} to map[string]string
+		if err := layer.UpdateLayerImports(); err != nil {
+			return nil, err
+		}
 	}
 
 	return &sf, err

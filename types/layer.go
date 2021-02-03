@@ -126,7 +126,11 @@ func (l *Layer) ParseFullCommand() ([]string, error) {
 	})
 }
 
-func (l *Layer) CleanImports() error {
+// Import directive from stacker file needs to support both []string and []map[string]string eg:
+// Layer.Import: [{"hash": importHash, "path": importPath}] && [importPath1, importPath2]
+// UpdateLayerImports converts Layer.Import from []interface{} to []map[string]string
+// Make sure we call this before reading stacker files and before opening cache
+func (l *Layer) UpdateLayerImports() error {
 	var rawImports []map[string]string
 	imports, ok := l.Import.([]interface{})
 
@@ -154,6 +158,7 @@ func (l *Layer) CleanImports() error {
 			return errors.Errorf("Unsupported import type: %v", v)
 		}
 	}
+
 	l.Import = rawImports
 	return nil
 }
@@ -161,7 +166,7 @@ func (l *Layer) CleanImports() error {
 func (l *Layer) ParseImport() ([]map[string]string, error) {
 	rawImports, ok := l.Import.([]map[string]string)
 	if !ok {
-		err := l.CleanImports()
+		err := l.UpdateLayerImports()
 		if err != nil {
 			return []map[string]string{}, err
 		}

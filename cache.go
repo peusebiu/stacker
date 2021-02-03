@@ -92,6 +92,7 @@ func OpenCache(config types.StackerConfig, oci casext.Engine, sfm types.StackerF
 		return nil, err
 	}
 
+
 	if err := json.Unmarshal(content, cache); err != nil {
 		return nil, err
 	}
@@ -128,6 +129,11 @@ func OpenCache(config types.StackerConfig, oci casext.Engine, sfm types.StackerF
 			delete(cache.Cache, hash)
 			pruned = true
 		}
+
+		// update Layer.Import from interface{} to map[string]string
+		if err := ent.Layer.UpdateLayerImports(); err != nil {
+			return nil, err
+		}
 	}
 
 	if pruned {
@@ -149,10 +155,6 @@ func walkImport(path string) (*mtree.DirectoryHierarchy, error) {
 
 func (c *BuildCache) Lookup(name string) (*CacheEntry, bool, error) {
 	l, ok := c.sfm.LookupLayerDefinition(name)
-	imports, err := l.ParseImport()
-	if err != nil {
-		return nil, false, err
-	}
 
 	if !ok {
 		return nil, false, nil
@@ -177,12 +179,6 @@ func (c *BuildCache) Lookup(name string) (*CacheEntry, bool, error) {
 		return nil, false, err
 	}
 
-	log.Debugf("Info about layers contents: ")
-	log.Debugf("sf layer: %#v", l)
-	log.Debugf("sf layer hash: %s", h2)
-	log.Debugf("cached layer: %#v", result.Layer)
-	log.Debugf("cached layer hash: %s", h1)
-
 	if h1 != h2 {
 		log.Infof("cache miss because layer definition was changed")
 		return nil, false, nil
@@ -196,6 +192,11 @@ func (c *BuildCache) Lookup(name string) (*CacheEntry, bool, error) {
 	if baseHash != result.Base {
 		log.Infof("cache miss because base layer was changed")
 		return nil, false, nil
+	}
+
+	imports, err := l.ParseImport()
+	if err != nil {
+		return nil, false, err
 	}
 
 	for _, imp := range imports {
