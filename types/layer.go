@@ -155,6 +155,13 @@ func (l *Layer) UpdateLayerImports() error {
 				})
 				continue
 			}
+
+			_, ok = v.(map[string]string)
+			if ok {
+				//nothing to do
+				continue
+			}
+			
 			return errors.Errorf("Unsupported import type: %v", v)
 		}
 	}
