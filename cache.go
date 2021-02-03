@@ -177,6 +177,12 @@ func (c *BuildCache) Lookup(name string) (*CacheEntry, bool, error) {
 		return nil, false, err
 	}
 
+	log.Debugf("Info about layers contents: ")
+	log.Debugf("sf layer: %#v", l)
+	log.Debugf("sf layer hash: %s", h2)
+	log.Debugf("cached layer: %#v", result.Layer)
+	log.Debugf("cached layer hash: %s", h1)
+
 	if h1 != h2 {
 		log.Infof("cache miss because layer definition was changed")
 		return nil, false, nil
