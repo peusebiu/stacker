@@ -146,15 +146,14 @@ func (l *Layer) UpdateLayerImports() error {
 				continue
 			}
 
-			_, ok = v.(map[string]interface{})
+			m2, ok := v.(map[string]interface{})
 			if ok {
 				// this happens when reading cache
 				rawImports = append(rawImports, map[string]string{
-					"path": fmt.Sprintf("%v", m["path"]),
-					"hash": fmt.Sprintf("%v", m["hash"]),
+					"path": fmt.Sprintf("%v", m2["path"]),
+					"hash": fmt.Sprintf("%v", m2["hash"]),
 				})
 				continue
-
 			}
 
 			// check if it's string
