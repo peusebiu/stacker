@@ -244,7 +244,17 @@ func acquireUrl(c types.StackerConfig, storage types.Storage, i string, cache st
 			return "", err
 		}
 		defer cleanup()
-		return p, Grab(c, storage, snap, url.Path, cache, hash)
+		err = Grab(c, storage, snap, url.Path, cache)
+		if err != nil {
+			return "", err
+		}
+		if len(hash) > 0 {
+			err := verifyImportFileHash(p, hash)
+			if err != nil {
+				return "", err
+			}
+		}
+		return p, nil
 	}
 
 	return "", errors.Errorf("unsupported url scheme %s", i)

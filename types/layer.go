@@ -60,15 +60,10 @@ type Layer struct {
 }
 
 func getImportMapFromInterface(v interface{}) ImportMap {
-	m, ok := v.(map[interface{}]interface{})
+	m, ok := v.(map[string]interface{})
 	if ok {
-		log.Debugf("its map[interface{}]interface{} %#v\n", m)
-		return ImportMap{Hash: fmt.Sprintf("%v", m["hash"]), Path: fmt.Sprintf("%v", m["path"])}
-	}
-	m2, ok := v.(map[string]interface{})
-	if ok {
-		log.Debugf("its map[string]interface{} %#v\n", m2)
-		return ImportMap{Hash: fmt.Sprintf("%v", m2["hash"]), Path: fmt.Sprintf("%v", m2["path"])}
+		log.Debugf("its map[string]interface{} %#v\n", m)
+		return ImportMap{Hash: fmt.Sprintf("%v", m["Hash"]), Path: fmt.Sprintf("%v", m["Path"])}
 	}
 	// if it's not a map then it's a string
 	s, ok := v.(string)
