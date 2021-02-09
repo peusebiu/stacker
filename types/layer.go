@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,9 +31,16 @@ func IsContainersImageLayer(from string) bool {
 	return false
 }
 
+type ImportMap struct {
+	Path string
+	Hash string
+}
+
+type ImportMaps []ImportMap
+
 type Layer struct {
 	From               *ImageSource      `yaml:"from"`
-	Import             interface{}       `yaml:"import"`
+	Import             ImportMaps        `yaml:"import"`
 	Run                interface{}       `yaml:"run"`
 	Cmd                interface{}       `yaml:"cmd"`
 	Entrypoint         interface{}       `yaml:"entrypoint"`
@@ -48,6 +56,45 @@ type Layer struct {
 	Binds              interface{}       `yaml:"binds"`
 	RuntimeUser        string            `yaml:"runtime_user"`
 	referenceDirectory string            // Location of the directory where the layer is defined
+}
+
+func getImportMapFromInterface(v interface{}) ImportMap {
+	m, ok := v.(map[interface{}]interface{})
+	if ok {
+		return ImportMap{Hash: fmt.Sprintf("%v", m["hash"]), Path: fmt.Sprintf("%v", m["path"])}
+	}
+	m2, ok := v.(map[string]interface{})
+	if ok {
+		return ImportMap{Hash: fmt.Sprintf("%v", m2["hash"]), Path: fmt.Sprintf("%v", m2["path"])}
+	}
+	// if it's not a map then it's a string
+	s, ok := v.(string)
+	if ok {
+		return ImportMap{Hash: "", Path: fmt.Sprintf("%v", s)}
+	}
+	return ImportMap{}
+}
+
+// Custom Unmarshal from string/map/slice of strings/slice of maps into ImportMaps
+func (im *ImportMaps) UnmarshalJSON(b []byte) error {
+	var data interface{}
+	if err := json.Unmarshal(b, &data); err != nil {
+		return err
+	}
+
+	imports, ok := data.([]interface{})
+	if ok {
+		// imports are a list of either strings or maps
+		for _, v := range imports {
+			*im = append(*im, getImportMapFromInterface(v))
+		}
+	} else {
+		if data != nil {
+			// import are either string or map
+			*im = append(*im, getImportMapFromInterface(data))
+		}
+	}
+	return nil
 }
 
 func filterEnv(matchList []string, curEnv map[string]string) (map[string]string, error) {
@@ -126,62 +173,15 @@ func (l *Layer) ParseFullCommand() ([]string, error) {
 	})
 }
 
-// Import directive from stacker file needs to support both []string and []map[string]string eg:
-// Layer.Import: [{"hash": importHash, "path": importPath}] && [importPath1, importPath2]
-// UpdateLayerImports converts Layer.Import from []interface{} to []map[string]string
-// Make sure we call this before reading stacker files and before opening cache
-func (l *Layer) UpdateLayerImports() error {
-	var rawImports []map[string]string
-	imports, ok := l.Import.([]interface{})
-
-	if ok {
-		// if it's a list then convert types to map[string]string
-		for _, v := range imports {
-			rawImport, err := interfaceToMapString(v)
-			if err != nil {
-				return err
-			} else {
-				rawImports = append(rawImports, rawImport)
-			}
-		}
-	} else {
-		if l.Import != nil {
-			// should be a single value (string or map)
-			rawImport, err := interfaceToMapString(l.Import)
-			if err != nil {
-				return err
-			} else {
-				rawImports = append(rawImports, rawImport)
-			}
-		}
-	}
-	l.Import = rawImports
-	return nil
-}
-
-func (l *Layer) ParseImport() ([]map[string]string, error) {
-	rawImports, ok := l.Import.([]map[string]string)
-	if !ok {
-		err := l.UpdateLayerImports()
+func (l *Layer) ParseImport() (ImportMaps, error) {
+	var absImports ImportMaps
+	var absImport ImportMap
+	for _, rawImport := range l.Import {
+		absImportPath, err := l.getAbsPath(rawImport.Path)
 		if err != nil {
-			return []map[string]string{}, err
+			return nil, err
 		}
-	}
-	var absImport map[string]string
-	var absImports []map[string]string
-	for _, rawImport := range rawImports {
-		absImport = make(map[string]string)
-		for k, v := range rawImport {
-			if k == "path" {
-				absImportPath, err := l.getAbsPath(v)
-				if err != nil {
-					return nil, err
-				}
-				absImport["path"] = absImportPath
-			} else {
-				absImport["hash"] = rawImport["hash"]
-			}
-		}
+		absImport = ImportMap{Hash: rawImport.Hash, Path: absImportPath}
 		absImports = append(absImports, absImport)
 	}
 	return absImports, nil
@@ -292,27 +292,18 @@ func (l *Layer) getStringOrStringSlice(iface interface{}, xform func(string) ([]
 	return nil, errors.Errorf("unknown directive type: %T", l.Run)
 }
 
-func interfaceToMapString(v interface{}) (map[string]string, error) {
+func interfaceToMapString(v interface{}) (map[string]interface{}, error) {
 	m, ok := v.(map[interface{}]interface{})
 	if ok {
-		return map[string]string{
+		return map[string]interface{}{
 			"path": fmt.Sprintf("%v", m["path"]),
 			"hash": fmt.Sprintf("%v", m["hash"]),
 		}, nil
 	}
 
-	m2, ok := v.(map[string]interface{})
-	if ok {
-		// this mapping happens when reading cache json file
-		return map[string]string{
-			"path": fmt.Sprintf("%v", m2["path"]),
-			"hash": fmt.Sprintf("%v", m2["hash"]),
-		}, nil
-	}
-
 	s, ok := v.(string)
 	if ok {
-		return map[string]string{
+		return map[string]interface{}{
 			"path": s,
 			"hash": "",
 		}, nil

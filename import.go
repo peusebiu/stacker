@@ -250,7 +250,7 @@ func acquireUrl(c types.StackerConfig, storage types.Storage, i string, cache st
 	return "", errors.Errorf("unsupported url scheme %s", i)
 }
 
-func CleanImportsDir(c types.StackerConfig, name string, imports []map[string]string, cache *BuildCache) error {
+func CleanImportsDir(c types.StackerConfig, name string, imports types.ImportMaps, cache *BuildCache) error {
 	dir := path.Join(c.StackerDir, "imports", name)
 
 	cacheEntry, cacheHit := cache.Cache[name]
@@ -265,9 +265,9 @@ func CleanImportsDir(c types.StackerConfig, name string, imports []map[string]st
 	// make sure we invalidate the cached version.
 	for _, i := range imports {
 		for cached := range cacheEntry.Imports {
-			if path.Base(cached) == path.Base(i["path"]) && cached != i["path"] {
-				log.Infof("%s url changed to %s, pruning cache", cached, i["path"])
-				err := os.RemoveAll(path.Join(dir, path.Base(i["path"])))
+			if path.Base(cached) == path.Base(i.Path) && cached != i.Hash {
+				log.Infof("%s url changed to %s, pruning cache", cached, i.Path)
+				err := os.RemoveAll(path.Join(dir, path.Base(i.Path)))
 				if err != nil {
 					return err
 				}
@@ -278,7 +278,7 @@ func CleanImportsDir(c types.StackerConfig, name string, imports []map[string]st
 	return nil
 }
 
-func Import(c types.StackerConfig, storage types.Storage, name string, imports []map[string]string, progress bool) error {
+func Import(c types.StackerConfig, storage types.Storage, name string, imports types.ImportMaps, progress bool) error {
 	dir := path.Join(c.StackerDir, "imports", name)
 
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -291,7 +291,7 @@ func Import(c types.StackerConfig, storage types.Storage, name string, imports [
 	}
 
 	for _, i := range imports {
-		name, err := acquireUrl(c, storage, i["path"], dir, progress, i["hash"])
+		name, err := acquireUrl(c, storage, i.Path, dir, progress, i.Hash)
 		if err != nil {
 			return err
 		}

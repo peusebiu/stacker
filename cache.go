@@ -128,11 +128,6 @@ func OpenCache(config types.StackerConfig, oci casext.Engine, sfm types.StackerF
 			delete(cache.Cache, hash)
 			pruned = true
 		}
-
-		// update Layer.Import from interface{} to map[string]string
-		if err := ent.Layer.UpdateLayerImports(); err != nil {
-			return nil, err
-		}
 	}
 
 	if pruned {
@@ -199,26 +194,26 @@ func (c *BuildCache) Lookup(name string) (*CacheEntry, bool, error) {
 	}
 
 	for _, imp := range imports {
-		cachedImport, ok := result.Imports[imp["path"]]
+		cachedImport, ok := result.Imports[imp.Path]
 		if !ok {
-			log.Infof("cache miss because of new import: %s", imp["path"])
+			log.Infof("cache miss because of new import: %s", imp.Path)
 			return nil, false, nil
 		}
 
-		fname := path.Base(imp["path"])
+		fname := path.Base(imp.Path)
 		importsDir := path.Join(c.config.StackerDir, "imports")
 		diskPath := path.Join(importsDir, name, fname)
 		st, err := os.Stat(diskPath)
 		if err != nil {
 			if os.IsNotExist(err) {
-				log.Infof("cache miss because import was missing: %s", imp["path"])
+				log.Infof("cache miss because import was missing: %s", imp.Path)
 				return nil, false, nil
 			}
 			return nil, false, err
 		}
 
 		if cachedImport.Type.IsDir() != st.IsDir() {
-			log.Infof("cache miss because import type changed: %s", imp["path"])
+			log.Infof("cache miss because import type changed: %s", imp.Path)
 			return nil, false, err
 		}
 
@@ -244,7 +239,7 @@ func (c *BuildCache) Lookup(name string) (*CacheEntry, bool, error) {
 			}
 
 			if len(diff) > 0 {
-				log.Infof("cache miss because import dir content changed: %s", imp["path"])
+				log.Infof("cache miss because import dir content changed: %s", imp.Path)
 				return nil, false, nil
 			}
 		} else {
@@ -254,7 +249,7 @@ func (c *BuildCache) Lookup(name string) (*CacheEntry, bool, error) {
 			}
 
 			if h != cachedImport.Hash {
-				log.Infof("cache miss because import content changed: %s", imp["path"])
+				log.Infof("cache miss because import content changed: %s", imp.Path)
 				return nil, false, nil
 			}
 		}
@@ -363,7 +358,7 @@ func (c *BuildCache) Put(name string, manifests map[types.LayerType]ispec.Descri
 	}
 
 	for _, imp := range imports {
-		fname := path.Base(imp["path"])
+		fname := path.Base(imp.Path)
 		importsDir := path.Join(c.config.StackerDir, "imports")
 		diskPath := path.Join(importsDir, name, fname)
 		st, err := os.Stat(diskPath)
@@ -386,7 +381,7 @@ func (c *BuildCache) Put(name string, manifests map[types.LayerType]ispec.Descri
 			}
 		}
 
-		ent.Imports[imp["path"]] = ih
+		ent.Imports[imp.Path] = ih
 	}
 
 	c.Cache[name] = ent
