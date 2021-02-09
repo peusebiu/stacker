@@ -292,25 +292,6 @@ func (l *Layer) getStringOrStringSlice(iface interface{}, xform func(string) ([]
 	return nil, errors.Errorf("unknown directive type: %T", l.Run)
 }
 
-func interfaceToMapString(v interface{}) (map[string]interface{}, error) {
-	m, ok := v.(map[interface{}]interface{})
-	if ok {
-		return map[string]interface{}{
-			"path": fmt.Sprintf("%v", m["path"]),
-			"hash": fmt.Sprintf("%v", m["hash"]),
-		}, nil
-	}
-
-	s, ok := v.(string)
-	if ok {
-		return map[string]interface{}{
-			"path": s,
-			"hash": "",
-		}, nil
-	}
-	return nil, errors.Errorf("Unsupported import type: %#v", v)
-}
-
 var (
 	layerFields []string
 )
