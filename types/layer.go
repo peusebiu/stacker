@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/anuvu/stacker/log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -32,8 +33,8 @@ func IsContainersImageLayer(from string) bool {
 }
 
 type ImportMap struct {
-	Path string
-	Hash string
+	Path string `yaml:"path"`
+	Hash string `yaml:"hash"`
 }
 
 type ImportMaps []ImportMap
@@ -61,39 +62,63 @@ type Layer struct {
 func getImportMapFromInterface(v interface{}) ImportMap {
 	m, ok := v.(map[interface{}]interface{})
 	if ok {
+		log.Debugf("its map[interface{}]interface{} %#v\n", m)
 		return ImportMap{Hash: fmt.Sprintf("%v", m["hash"]), Path: fmt.Sprintf("%v", m["path"])}
 	}
 	m2, ok := v.(map[string]interface{})
 	if ok {
+		log.Debugf("its map[string]interface{} %#v\n", m2)
 		return ImportMap{Hash: fmt.Sprintf("%v", m2["hash"]), Path: fmt.Sprintf("%v", m2["path"])}
 	}
 	// if it's not a map then it's a string
 	s, ok := v.(string)
 	if ok {
+		log.Debugf("its a simple string %#v\n", s)
 		return ImportMap{Hash: "", Path: fmt.Sprintf("%v", s)}
 	}
+	log.Debugf("Didn't find a matching type: %#v", v)
 	return ImportMap{}
 }
 
-// Custom Unmarshal from string/map/slice of strings/slice of maps into ImportMaps
-func (im *ImportMaps) UnmarshalJSON(b []byte) error {
-	var data interface{}
-	if err := json.Unmarshal(b, &data); err != nil {
-		return err
-	}
-
+func customUnmarshal(im *ImportMaps, data interface{}) {
 	imports, ok := data.([]interface{})
 	if ok {
+		log.Debugf("imports: %#v\n", imports)
 		// imports are a list of either strings or maps
 		for _, v := range imports {
 			*im = append(*im, getImportMapFromInterface(v))
 		}
 	} else {
+		log.Debugf("data: %#v\n", data)
 		if data != nil {
 			// import are either string or map
 			*im = append(*im, getImportMapFromInterface(data))
 		}
 	}
+	log.Debugf("im: %#v\n", im)
+}
+
+// Custom UnmarshalJSON from string/map/slice of strings/slice of maps into ImportMaps
+func (im *ImportMaps) UnmarshalJSON(b []byte) error {
+	log.Debugf("UnmarshalJSON\n")
+	var data interface{}
+	if err := json.Unmarshal(b, &data); err != nil {
+		return err
+	}
+	customUnmarshal(im, data)
+
+	return nil
+}
+
+// Custom UnmarshalYAML from string/map/slice of strings/slice of maps into ImportMaps
+func (im *ImportMaps) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	log.Debugf("UnmarshalYAML\n")
+	var data interface{}
+	if err := unmarshal(&data); err != nil {
+		return err
+	}
+	customUnmarshal(im, data)
+
 	return nil
 }
 
