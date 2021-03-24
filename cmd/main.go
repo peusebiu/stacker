@@ -255,7 +255,7 @@ func main() {
 			cmd = append(cmd[:2], cmd[1:]...)
 			cmd[1] = "--internal-userns"
 
-			stackerResult(container.MaybeRunInUserns(cmd, ""))
+			stackerResult(container.MaybeRunInUserns(cmd, config))
 		}
 		return nil
 	}

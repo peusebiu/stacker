@@ -29,6 +29,107 @@ type Container struct {
 	c  *lxc.Container
 }
 
+func NewBuildContainer(sc types.StackerConfig) (*Container, error) {
+	if !lxc.VersionAtLeast(2, 1, 0) {
+		return nil, errors.Errorf("stacker requires liblxc >= 2.1.0")
+	}
+	name := "outerBuild"
+	lxcC, err := lxc.NewContainer(name)
+	if err != nil {
+		return nil, err
+	}
+
+	c := &Container{sc: sc, c: lxcC}
+
+	if err := c.c.SetLogLevel(lxc.TRACE); err != nil {
+		return nil, err
+	}
+
+
+	logFile := path.Join(sc.StackerDir, "lxc_outerBuild.log")
+	err = c.c.SetLogFile(logFile)
+	if err != nil {
+		return nil, err
+	}
+
+	// Truncate the log file by hand, so people don't get confused by
+	// previous runs.
+	err = os.Truncate(logFile, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	idmapSet, err := container.ResolveCurrentIdmapSet()
+	if err != nil {
+		return nil, err
+	}
+
+	// similar to the hard coding in MaybeRunInUserns(), for now root
+	// containers run as root.
+	if os.Geteuid() == 0 {
+		idmapSet = nil
+	}
+
+	if idmapSet != nil {
+		for _, idm := range idmapSet.Idmap {
+			if err := idm.Usable(); err != nil {
+				return nil, errors.Errorf("idmap unusable: %s", err)
+			}
+		}
+
+		for _, lxcConfig := range idmapSet.ToLxcString() {
+			err = c.setConfig("lxc.idmap", lxcConfig)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// If we're in a userns, we need to be sure and make sure the
+		// rootfs pivot dir is somewhere that we can actually write to.
+		// Let's use .stacker/rootfs instead of /var/lib/lxc/rootfs
+		rootfsPivot := path.Join(sc.StackerDir, "rootfsOuterPivot")
+		if err := os.MkdirAll(rootfsPivot, 0755); err != nil {
+			return nil, err
+		}
+
+		if err := c.setConfig("lxc.rootfs.mount", rootfsPivot); err != nil {
+			return nil, err
+		}
+	}
+
+	configs := map[string]string{
+		"lxc.mount.auto":  "proc:mixed",
+		"lxc.autodev":     "1",
+		"lxc.pty.max":     "1024",
+		"lxc.mount.entry": "none dev/shm tmpfs defaults,create=dir 0 0",
+		"lxc.uts.name":    name,
+		"lxc.net.0.type":  "none",
+		"lxc.environment": fmt.Sprintf("PATH=%s", ReasonableDefaultPath),
+	}
+
+	if err := c.setConfigs(configs); err != nil {
+		return nil, err
+	}
+
+	err = c.bindMount("/sys", "/sys", "")
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.bindMount("/etc/resolv.conf", "/etc/resolv.conf", "")
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.setConfig("lxc.rootfs.path", "dir:/")
+	if err != nil {
+		return nil, err
+	}
+
+	return c, nil
+
+}
+
 func NewContainer(sc types.StackerConfig, storage types.Storage, name string) (*Container, error) {
 	if !lxc.VersionAtLeast(2, 1, 0) {
 		return nil, errors.Errorf("stacker requires liblxc >= 2.1.0")
