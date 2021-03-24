@@ -45,7 +45,6 @@ func NewBuildContainer(sc types.StackerConfig) (*Container, error) {
 		return nil, err
 	}
 
-
 	logFile := path.Join(sc.StackerDir, "lxc_outerBuild.log")
 	err = c.c.SetLogFile(logFile)
 	if err != nil {
@@ -111,15 +110,15 @@ func NewBuildContainer(sc types.StackerConfig) (*Container, error) {
 		return nil, err
 	}
 
-	err = c.bindMount("/sys", "/sys", "")
-	if err != nil {
-		return nil, err
-	}
-
-	err = c.bindMount("/etc/resolv.conf", "/etc/resolv.conf", "")
-	if err != nil {
-		return nil, err
-	}
+	//err = c.bindMount("/sys", "/sys", "")
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//err = c.bindMount("/etc/resolv.conf", "/etc/resolv.conf", "")
+	//if err != nil {
+	//	return nil, err
+	//}
 
 	err = c.setConfig("lxc.rootfs.path", "dir:/")
 	if err != nil {
@@ -255,6 +254,7 @@ func (c *Container) setConfigs(config map[string]string) error {
 }
 
 func (c *Container) setConfig(name string, value string) error {
+	log.Debugf("lxc: Set config item: %s to %s", name, value)
 	err := c.c.SetConfigItem(name, value)
 	if err != nil {
 		return errors.Errorf("failed setting config %s to %s: %v", name, value, err)
@@ -289,7 +289,7 @@ func (c *Container) containerError(theErr error, msg string) error {
 	return errors.Wrapf(theErr, msg)
 }
 
-func (c *Container) Execute(args string, stdin io.Reader) error {
+func (c *Container) Execute(args string, stdin io.Reader, isOuter bool) error {
 	if err := c.setConfig("lxc.execute.cmd", args); err != nil {
 		return err
 	}
@@ -305,27 +305,37 @@ func (c *Container) Execute(args string, stdin io.Reader) error {
 		return err
 	}
 
-	// we want to be sure to remove the /stacker from the generated
-	// filesystem after execution. TODO: parameterize this by storage
-	// backend? it will always be "rootfs" for btrfs and "overlay" for the
-	// overlay backend. Maybe this shouldn't even live here.
-	defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "rootfs", "stacker"))
-	defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "overlay", "stacker"))
-
 	// Just in case the binary has chdir'd somewhere since it started,
 	// let's readlink /proc/self/exe to figure out what to exec.
 	binary, err := os.Readlink("/proc/self/exe")
 	if err != nil {
 		return err
 	}
+	var cmd *exec.Cmd
+	if !isOuter {
+		// we want to be sure to remove the /stacker from the generated
+		// filesystem after execution. TODO: parameterize this by storage
+		// backend? it will always be "rootfs" for btrfs and "overlay" for the
+		// overlay backend. Maybe this shouldn't even live here.
+		defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "rootfs", "stacker"))
+		defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "overlay", "stacker"))
 
-	cmd := exec.Command(
-		binary,
-		"internal",
-		c.c.Name(),
-		c.sc.RootFSDir,
-		f.Name(),
-	)
+		cmd = exec.Command(
+			binary,
+			"internal",
+			c.c.Name(),
+			c.sc.RootFSDir,
+			f.Name(),
+		)
+	} else {
+		cmd = exec.Command(
+			binary,
+			"internal",
+			c.c.Name(),
+			"/",
+			f.Name(),
+		)
+	}
 
 	cmd.Stdin = stdin
 	cmd.Stdout = os.Stdout

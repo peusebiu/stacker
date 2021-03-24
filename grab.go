@@ -21,5 +21,5 @@ func Grab(sc types.StackerConfig, storage types.Storage, name string, source str
 	}
 	defer os.Remove(path.Join(sc.RootFSDir, name, "rootfs", "stacker"))
 
-	return c.Execute(fmt.Sprintf("cp -a %s /stacker", source), nil)
+	return c.Execute(fmt.Sprintf("cp -a %s /stacker", source), nil, false)
 }

@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
+	"github.com/anuvu/stacker"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/user"
 	"path"
 	"path/filepath"
+	"strings"
 	"syscall"
 
-	"github.com/anuvu/stacker/container"
 	stackerlog "github.com/anuvu/stacker/log"
 	"github.com/anuvu/stacker/types"
 	"github.com/apex/log"
@@ -254,8 +255,14 @@ func main() {
 			cmd[0] = binary
 			cmd = append(cmd[:2], cmd[1:]...)
 			cmd[1] = "--internal-userns"
-
-			stackerResult(container.MaybeRunInUserns(cmd, config))
+			log.Debugf("Init container")
+			c, err := stacker.NewBuildContainer(config)
+			if err != nil {
+				return err
+			}
+			defer c.Close()
+			log.Debugf("Running cmd: %s", strings.Join(cmd, " "))
+			stackerResult(c.Execute(strings.Join(cmd, " "), nil, true))
 		}
 		return nil
 	}

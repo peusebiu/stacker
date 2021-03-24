@@ -2,12 +2,10 @@ package container
 
 import (
 	"fmt"
-	"github.com/anuvu/stacker"
 	"os"
 	"os/exec"
 	"os/user"
 	"strconv"
-	"strings"
 
 	"github.com/anuvu/stacker/log"
 	"github.com/anuvu/stacker/types"
@@ -110,17 +108,32 @@ func RunInUserns(idmapSet *idmap.IdmapSet, userCmd []string, msg string) error {
 
 // A wrapper which runs things in a userns if we're an unprivileged user with
 // an idmap, or runs things on the host if we're root and don't.
-func MaybeRunInUserns(userCmd []string, config types.StackerConfig) error {
-	c, err := stacker.NewBuildContainer(config)
+func MaybeRunInUserns(userCmd []string, msg string) error {
+	// TODO: we should try to use user namespaces when we're root as well.
+	// For now we don't.
+	if os.Geteuid() == 0 {
+		log.Debugf("No uid mappings, running as root")
+		cmd := exec.Command(userCmd[0], userCmd[1:]...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return errors.Wrapf(cmd.Run(), msg)
+	}
+
+	idmapSet, err := ResolveCurrentIdmapSet()
 	if err != nil {
 		return err
 	}
-	defer c.Close()
 
-	return c.Execute(strings.Join(userCmd, " "), nil)
+	if idmapSet == nil {
+		if os.Geteuid() != 0 {
+			return errors.Errorf("no idmap and not root, can't run %v", userCmd)
+		}
 
+	}
+
+	return RunInUserns(idmapSet, userCmd, msg)
 }
-
 
 func RunInternalGoSubcommand(config types.StackerConfig, args []string) error {
 	binary, err := os.Readlink("/proc/self/exe")
