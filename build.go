@@ -105,7 +105,7 @@ func (b *Builder) updateOCIConfigForOutput(sf *types.Stackerfile, s types.Storag
 			return err
 		}
 
-		err = c.Execute("/oci-labels/.stacker-run.sh", nil, false)
+		err = c.Execute("/oci-labels/.stacker-run.sh", nil)
 		if err != nil {
 			return err
 		}
@@ -443,10 +443,10 @@ func (b *Builder) Build(s types.Storage, file string) error {
 			}
 
 			// These should all be non-interactive; let's ensure that.
-			err = c.Execute("/stacker/.stacker-run.sh", nil, false)
+			err = c.Execute("/stacker/.stacker-run.sh", nil)
 			if err != nil {
 				if opts.OnRunFailure != "" {
-					err2 := c.Execute(opts.OnRunFailure, os.Stdin, false)
+					err2 := c.Execute(opts.OnRunFailure, os.Stdin)
 					if err2 != nil {
 						log.Infof("failed executing %s: %s\n", opts.OnRunFailure, err2)
 					}

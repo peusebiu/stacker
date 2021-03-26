@@ -256,13 +256,7 @@ func main() {
 			cmd = append(cmd[:2], cmd[1:]...)
 			cmd[1] = "--internal-userns"
 			log.Debugf("Init container")
-			c, err := stacker.NewBuildContainer(config)
-			if err != nil {
-				return err
-			}
-			defer c.Close()
-			log.Debugf("Running cmd: %s", strings.Join(cmd, " "))
-			stackerResult(c.Execute(strings.Join(cmd, " "), nil, true))
+			stackerResult(stacker.ExecStackerCmd(config, strings.Join(cmd, "")))
 		}
 		return nil
 	}

@@ -29,17 +29,18 @@ type Container struct {
 	c  *lxc.Container
 }
 
-func NewBuildContainer(sc types.StackerConfig) (*Container, error) {
+func ExecStackerCmd(sc types.StackerConfig, stackerBuildCmd string) error {
 	if !lxc.VersionAtLeast(2, 1, 0) {
 		return nil, errors.Errorf("stacker requires liblxc >= 2.1.0")
 	}
 	name := "outerBuild"
 	lxcC, err := lxc.NewContainer(name)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	c := &Container{sc: sc, c: lxcC}
+	defer c.Close()
 
 	if err := c.c.SetLogLevel(lxc.TRACE); err != nil {
 		return nil, err
@@ -48,19 +49,19 @@ func NewBuildContainer(sc types.StackerConfig) (*Container, error) {
 	logFile := path.Join(sc.StackerDir, "lxc_outerBuild.log")
 	err = c.c.SetLogFile(logFile)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Truncate the log file by hand, so people don't get confused by
 	// previous runs.
 	err = os.Truncate(logFile, 0)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	idmapSet, err := container.ResolveCurrentIdmapSet()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// similar to the hard coding in MaybeRunInUserns(), for now root
@@ -72,14 +73,14 @@ func NewBuildContainer(sc types.StackerConfig) (*Container, error) {
 	if idmapSet != nil {
 		for _, idm := range idmapSet.Idmap {
 			if err := idm.Usable(); err != nil {
-				return nil, errors.Errorf("idmap unusable: %s", err)
+				return errors.Errorf("idmap unusable: %s", err)
 			}
 		}
 
 		for _, lxcConfig := range idmapSet.ToLxcString() {
 			err = c.setConfig("lxc.idmap", lxcConfig)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 
@@ -88,11 +89,11 @@ func NewBuildContainer(sc types.StackerConfig) (*Container, error) {
 		// Let's use .stacker/rootfs instead of /var/lib/lxc/rootfs
 		rootfsPivot := path.Join(sc.StackerDir, "rootfsOuterPivot")
 		if err := os.MkdirAll(rootfsPivot, 0755); err != nil {
-			return nil, err
+			return err
 		}
 
 		if err := c.setConfig("lxc.rootfs.mount", rootfsPivot); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
@@ -107,13 +108,13 @@ func NewBuildContainer(sc types.StackerConfig) (*Container, error) {
 	}
 
 	if err := c.setConfigs(configs); err != nil {
-		return nil, err
+		return err
 	}
 
-	//err = c.bindMount("/sys", "/sys", "")
-	//if err != nil {
-	//	return nil, err
-	//}
+	err = c.bindMount("/sys", "/sys", "")
+	if err != nil {
+		return err
+	}
 	//
 	//err = c.bindMount("/etc/resolv.conf", "/etc/resolv.conf", "")
 	//if err != nil {
@@ -122,10 +123,107 @@ func NewBuildContainer(sc types.StackerConfig) (*Container, error) {
 
 	err = c.setConfig("lxc.rootfs.path", "dir:/")
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return c, nil
+	if err := c.setConfig("lxc.execute.cmd", stackerBuildCmd); err != nil {
+		return err
+	}
+
+	f, err := ioutil.TempFile("", fmt.Sprintf("stacker_build_%s_run", c.c.Name()))
+	if err != nil {
+		return err
+	}
+	f.Close()
+	defer os.Remove(f.Name())
+
+	if err := c.c.SaveConfigFile(f.Name()); err != nil {
+		return err
+	}
+
+	// Just in case the binary has chdir'd somewhere since it started,
+	// let's readlink /proc/self/exe to figure out what to exec.
+	binary, err := os.Readlink("/proc/self/exe")
+	if err != nil {
+		return err
+	}
+	var cmd *exec.Cmd
+	// we want to be sure to remove the /stacker from the generated
+	// filesystem after execution. TODO: parameterize this by storage
+	// backend? it will always be "rootfs" for btrfs and "overlay" for the
+	// overlay backend. Maybe this shouldn't even live here.
+	defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "rootfs", "stacker"))
+	defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "overlay", "stacker"))
+
+	cmd = exec.Command(
+		binary,
+		"internal",
+		c.c.Name(),
+		"/home/peusebiu/.local/share/lxc/",
+		f.Name(),
+	)
+
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	// If this is non-interactive, we're going to setsid() later, so we
+	// need to make sure we capture the output somehow.
+/*	if stdin == nil {
+		reader, writer := io.Pipe()
+		defer writer.Close()
+
+		cmd.Stdout = writer
+		cmd.Stderr = writer
+
+		go func() {
+			defer reader.Close()
+			_, err := io.Copy(os.Stdout, reader)
+			if err != nil {
+				log.Infof("err from stdout copy: %s", err)
+			}
+		}()
+
+	}*/
+
+	signals := make(chan os.Signal)
+	signal.Notify(signals)
+	done := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case sg := <-signals:
+				// ignore SIGCHLD, we can't forward it and it's
+				// meaningless anyway
+				if sg == syscall.SIGCHLD {
+					continue
+				}
+
+				// upgrade SIGINT to SIGKILL. bash exits when
+				// it receives SIGINT, but doesn't kill its
+				// children, meaning the currently executing
+				// command will keep executing until it
+				// completes, and *then* things will die.
+				// Instead, let's just force kill it.
+				if sg == syscall.SIGINT {
+					sg = syscall.SIGKILL
+				}
+
+				err = syscall.Kill(c.c.InitPid(), sg.(syscall.Signal))
+				if err != nil {
+					log.Infof("failed to send signal %v %v", sg, err)
+				}
+			}
+		}
+	}()
+
+	cmdErr := cmd.Run()
+	done <- true
+
+	return c.containerError(cmdErr, "execute failed")
 
 }
 
@@ -289,7 +387,7 @@ func (c *Container) containerError(theErr error, msg string) error {
 	return errors.Wrapf(theErr, msg)
 }
 
-func (c *Container) Execute(args string, stdin io.Reader, isOuter bool) error {
+func (c *Container) Execute(args string, stdin io.Reader) error {
 	if err := c.setConfig("lxc.execute.cmd", args); err != nil {
 		return err
 	}
@@ -312,30 +410,20 @@ func (c *Container) Execute(args string, stdin io.Reader, isOuter bool) error {
 		return err
 	}
 	var cmd *exec.Cmd
-	if !isOuter {
-		// we want to be sure to remove the /stacker from the generated
-		// filesystem after execution. TODO: parameterize this by storage
-		// backend? it will always be "rootfs" for btrfs and "overlay" for the
-		// overlay backend. Maybe this shouldn't even live here.
-		defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "rootfs", "stacker"))
-		defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "overlay", "stacker"))
+	// we want to be sure to remove the /stacker from the generated
+	// filesystem after execution. TODO: parameterize this by storage
+	// backend? it will always be "rootfs" for btrfs and "overlay" for the
+	// overlay backend. Maybe this shouldn't even live here.
+	defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "rootfs", "stacker"))
+	defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "overlay", "stacker"))
 
-		cmd = exec.Command(
-			binary,
-			"internal",
-			c.c.Name(),
-			c.sc.RootFSDir,
-			f.Name(),
-		)
-	} else {
-		cmd = exec.Command(
-			binary,
-			"internal",
-			c.c.Name(),
-			"/",
-			f.Name(),
-		)
-	}
+	cmd = exec.Command(
+		binary,
+		"internal",
+		c.c.Name(),
+		c.sc.RootFSDir,
+		f.Name(),
+	)
 
 	cmd.Stdin = stdin
 	cmd.Stdout = os.Stdout
