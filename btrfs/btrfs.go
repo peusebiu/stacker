@@ -112,6 +112,8 @@ func (b *btrfs) Snapshot(source string, target string) error {
 		return err
 	}
 
+	log.Debugf("Running command: btrfs subvolume snapshot -r %s %s", path.Join(b.c.RootFSDir, source), path.Join(b.c.RootFSDir, target))
+
 	output, err := exec.Command(
 		"btrfs",
 		"subvolume",

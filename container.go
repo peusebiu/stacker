@@ -31,7 +31,7 @@ type Container struct {
 
 func ExecStackerCmd(sc types.StackerConfig, stackerBuildCmd string) error {
 	if !lxc.VersionAtLeast(2, 1, 0) {
-		return nil, errors.Errorf("stacker requires liblxc >= 2.1.0")
+		return errors.Errorf("stacker requires liblxc >= 2.1.0")
 	}
 	name := "outerBuild"
 	lxcC, err := lxc.NewContainer(name)
@@ -43,7 +43,7 @@ func ExecStackerCmd(sc types.StackerConfig, stackerBuildCmd string) error {
 	defer c.Close()
 
 	if err := c.c.SetLogLevel(lxc.TRACE); err != nil {
-		return nil, err
+		return err
 	}
 
 	logFile := path.Join(sc.StackerDir, "lxc_outerBuild.log")
@@ -152,8 +152,8 @@ func ExecStackerCmd(sc types.StackerConfig, stackerBuildCmd string) error {
 	// filesystem after execution. TODO: parameterize this by storage
 	// backend? it will always be "rootfs" for btrfs and "overlay" for the
 	// overlay backend. Maybe this shouldn't even live here.
-	defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "rootfs", "stacker"))
-	defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "overlay", "stacker"))
+	//defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "rootfs", "stacker"))
+	//defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "overlay", "stacker"))
 
 	cmd = exec.Command(
 		binary,
