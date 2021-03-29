@@ -169,7 +169,7 @@ func ExecStackerCmd(sc types.StackerConfig, stackerBuildCmd string) error {
 
 	// If this is non-interactive, we're going to setsid() later, so we
 	// need to make sure we capture the output somehow.
-/*	if stdin == nil {
+	/*	if stdin == nil {
 		reader, writer := io.Pipe()
 		defer writer.Close()
 
