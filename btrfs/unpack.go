@@ -82,7 +82,7 @@ func (b *btrfs) Unpack(tag, name string) error {
 		if err != nil {
 			return err
 		}
-
+		log.Debugf("Do unpack")
 		err = doUnpack(b.c, tag, cacheDir, bundlePath, startFrom.Digest.String())
 
 		if err != nil {
@@ -107,6 +107,7 @@ func (b *btrfs) Unpack(tag, name string) error {
 			return err
 		}
 	}
+	log.Debugf("Unpack successful")
 	return nil
 }
 
@@ -180,7 +181,7 @@ func doUnpack(config types.StackerConfig, tag, ociDir, bundlePath, startFromDige
 		log.Debugf("Unpack squashfs: %s", tag)
 		return squashfsUnpack(ociDir, oci, tag, bundlePath, callback, startFrom)
 	}
-
+	log.Debugf("tarUnpack")
 	return tarUnpack(config, oci, tag, bundlePath, callback, startFrom)
 }
 

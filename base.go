@@ -83,6 +83,7 @@ func SetupRootfs(o BaseLayerOpts) error {
 	case types.OCILayer:
 		fallthrough
 	case types.DockerLayer:
+		log.Debugf("Setup containers image rootfs")
 		return setupContainersImageRootfs(o)
 	default:
 		return errors.Errorf("unknown layer type: %v", o.Layer.From.Type)

@@ -279,18 +279,18 @@ func NewContainer(sc types.StackerConfig, storage types.Storage, name string) (*
 				return nil, err
 			}
 		}
+	}
 
-		// If we're in a userns, we need to be sure and make sure the
-		// rootfs pivot dir is somewhere that we can actually write to.
-		// Let's use .stacker/rootfs instead of /var/lib/lxc/rootfs
-		rootfsPivot := path.Join(sc.StackerDir, "rootfsPivot")
-		if err := os.MkdirAll(rootfsPivot, 0755); err != nil {
-			return nil, err
-		}
+	// If we're in a userns, we need to be sure and make sure the
+	// rootfs pivot dir is somewhere that we can actually write to.
+	// Let's use .stacker/rootfs instead of /var/lib/lxc/rootfs
+	rootfsPivot := path.Join(sc.StackerDir, "rootfsPivot")
+	if err := os.MkdirAll(rootfsPivot, 0755); err != nil {
+		return nil, err
+	}
 
-		if err := c.setConfig("lxc.rootfs.mount", rootfsPivot); err != nil {
-			return nil, err
-		}
+	if err := c.setConfig("lxc.rootfs.mount", rootfsPivot); err != nil {
+		return nil, err
 	}
 
 	configs := map[string]string{
@@ -409,7 +409,6 @@ func (c *Container) Execute(args string, stdin io.Reader) error {
 	if err != nil {
 		return err
 	}
-	var cmd *exec.Cmd
 	// we want to be sure to remove the /stacker from the generated
 	// filesystem after execution. TODO: parameterize this by storage
 	// backend? it will always be "rootfs" for btrfs and "overlay" for the
@@ -417,7 +416,7 @@ func (c *Container) Execute(args string, stdin io.Reader) error {
 	defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "rootfs", "stacker"))
 	defer os.Remove(path.Join(c.sc.RootFSDir, c.c.Name(), "overlay", "stacker"))
 
-	cmd = exec.Command(
+	cmd := exec.Command(
 		binary,
 		"internal",
 		c.c.Name(),

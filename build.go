@@ -404,6 +404,7 @@ func (b *Builder) Build(s types.Storage, file string) error {
 		if err != nil {
 			return err
 		}
+		log.Debugf("Setup rootfs")
 
 		c, err := NewContainer(opts.Config, s, name)
 		if err != nil {
