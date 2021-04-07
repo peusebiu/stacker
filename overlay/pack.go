@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"context"
 
 	"github.com/anuvu/stacker/lib"
 	"github.com/anuvu/stacker/log"
@@ -204,6 +205,62 @@ func ConvertAndOutput(config types.StackerConfig, tag, name string, layerType ty
 	}
 
 	return oci.UpdateReference(context.Background(), layerType.LayerName(name), desc)
+}
+
+func GenerateLayerFromOverlayDirs(config types.StackerConfig, name string, layerType types.LayerType) error {
+	oci, err := umoci.OpenLayout(config.OCIDir)
+	if err != nil {
+		return err
+	}
+	defer oci.Close()
+
+	//get descriptorPaths from our image's tag name
+	descriptorPaths, err := oci.ResolveReference(context.Background(), name)
+	if err != nil {
+		return err
+	}
+
+	if len(descriptorPaths) == 0 {
+		return errors.Errorf("tag not found: %s", name)
+	}
+
+	if len(descriptorPaths) != 1 {
+		return errors.Errorf("bad descriptor %s", tag)
+	}
+
+	// Create the mutator.
+	mutator, err := mutate.New(oci, descriptorPaths[0])
+	if err != nil {
+		return errors.Wrap(err, "create mutator for base image")
+	}
+
+	var meta umoci.Meta
+	meta.Version = umoci.MetaVersion
+
+	tempDest := path.Join(config.RootFSDir, name, "overlay_dirs")
+
+	blob := layer.GenerateInsertLayer(tempDest, "/", false, nil)
+	defer blob.Close()
+
+	var history *ispec.History
+	if _, err := mutator.Add(context.Background(), ispec.MediaTypeImageLayer, blob, history, mutate.GzipCompressor); err != nil {
+		return errors.Wrap(err, "add diff layer")
+	}
+
+	newDescriptorPath, err := mutator.Commit(context.Background())
+	if err != nil {
+		return errors.Wrap(err, "commit mutated image")
+	}
+
+	log.Infof("new image manifest created: %s->%s", newDescriptorPath.Root().Digest, newDescriptorPath.Descriptor().Digest)
+
+	if err := oci.UpdateReference(context.Background(), name, newDescriptorPath.Root()); err != nil {
+		return errors.Wrap(err, "add new tag")
+	}
+
+	log.Infof("updated tag for image manifest: %s", name)
+	return nil
+
 }
 
 func lookupManifestInDir(dir, name string) (ispec.Manifest, error) {

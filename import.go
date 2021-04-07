@@ -1,6 +1,7 @@
 package stacker
 
 import (
+	"github.com/anuvu/stacker/overlay"
 	"github.com/opencontainers/go-digest"
 	"io/ioutil"
 	"os"
@@ -354,4 +355,23 @@ func Import(c types.StackerConfig, storage types.Storage, name string, imports t
 	}
 
 	return nil
+}
+
+// Copy imports to a container rootfs
+func copyImportsInRootfs(name string, overlayDirs types.OverlayDirs, sc types.StackerConfig, storage types.Storage) error {
+	if storage.Name() == "btrfs" {
+		return errors.Errorf("Using overlay_dirs with btrfs storage is forbidden, use overlay storage instead")
+	}
+	for _, i := range overlayDirs {
+		tempDest := path.Join(sc.RootFSDir, name, "overlay_dirs")
+		if _, err := os.Stat(tempDest); os.IsNotExist(err) {
+			if err = os.MkdirAll(tempDest, 0755); err != nil {
+				return err
+			}
+		}
+		if err := lib.DirCopy(tempDest, i.Source); err != nil {
+			return err
+		}
+	}
+	return overlay.GenerateLayerFromOverlayDirs(sc, name, "tar")
 }
