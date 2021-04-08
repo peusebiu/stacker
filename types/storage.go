@@ -76,4 +76,8 @@ type Storage interface {
 	// TarExtractLocation returns the location that a tar-based rootfs
 	// should be extracted to
 	TarExtractLocation(name string) string
+
+	// Generate a layer with the contents specified in overlay_dirs directive from
+	// stacker files
+	GenerateOverlayDirLayers(name string, overlayDirs OverlayDirs) error
 }

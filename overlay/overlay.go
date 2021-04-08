@@ -8,6 +8,7 @@ package overlay
 
 import (
 	"fmt"
+	"github.com/anuvu/stacker/log"
 	"io/ioutil"
 	"os"
 	"path"
@@ -242,4 +243,23 @@ func (o *overlay) GetLXCRootfsConfig(name string) (string, error) {
 
 func (o *overlay) TarExtractLocation(name string) string {
 	return path.Join(o.config.RootFSDir, name, "overlay")
+}
+
+/*
+* munge the overlay_metadata.json for each target here; it should
+* already exist have BuiltLayers and Manifest populated accordingly, so
+* we just need to do the GenerateInsertLayer() bit and write out the
+* new metadata.json
+*/
+func (o *overlay) GenerateOverlayDirLayers(name string, overlayDirs types.OverlayDirs) error {
+    err := GenerateLayerFromOverlayDirs(o.config, name, "tar")
+    if err != nil {
+    	return err
+	}
+	ovl, err := readOverlayMetadata(o.config, name)
+	if err != nil {
+		return err
+	}
+	log.Debugf("ovl: %#v", ovl)
+	return nil
 }

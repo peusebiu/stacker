@@ -1,7 +1,6 @@
 package stacker
 
 import (
-	"github.com/anuvu/stacker/overlay"
 	"github.com/opencontainers/go-digest"
 	"io/ioutil"
 	"os"
@@ -373,5 +372,5 @@ func copyImportsInRootfs(name string, overlayDirs types.OverlayDirs, sc types.St
 			return err
 		}
 	}
-	return overlay.GenerateLayerFromOverlayDirs(sc, name, "tar")
+	return nil
 }

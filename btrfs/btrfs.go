@@ -508,3 +508,8 @@ func setupLoopback(path string, uid int, gid int, size int64) error {
 
 	return nil
 }
+
+func (b *btrfs) GenerateOverlayDirLayers(name string, overlayDirs types.OverlayDirs) error {
+	return errors.Errorf("Using overlay_dirs with btrfs storage is forbidden, use overlay storage instead")
+}
+

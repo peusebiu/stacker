@@ -21,6 +21,9 @@ type overlayMetadata struct {
 
 	// layers not yet rendered into the output image
 	BuiltLayers []string
+
+	// stuff from the overlay_dirs stacker.yaml entry
+	OverlayDirs []ispec.Descriptor
 }
 
 func newOverlayMetadata() overlayMetadata {
@@ -105,6 +108,14 @@ func (ovl overlayMetadata) lxcRootfsString(config types.StackerConfig, tag strin
 
 	for _, layer := range ovl.BuiltLayers {
 		contents := path.Join(config.RootFSDir, layer, "overlay")
+		if _, err := os.Stat(contents); err != nil {
+			return "", errors.Wrapf(err, "%s does not exist", contents)
+		}
+		lowerdirs = append(lowerdirs, contents)
+	}
+
+	for _, layer := range ovl.OverlayDirs {
+		contents := overlayPath(config, layer.Digest, "overlay")
 		if _, err := os.Stat(contents); err != nil {
 			return "", errors.Wrapf(err, "%s does not exist", contents)
 		}
