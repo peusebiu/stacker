@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-	"context"
 
 	"github.com/anuvu/stacker/lib"
 	"github.com/anuvu/stacker/log"
@@ -214,6 +213,13 @@ func GenerateLayerFromOverlayDirs(config types.StackerConfig, name string, layer
 	}
 	defer oci.Close()
 
+	cacheDir := path.Join(config.StackerDir, "layer-bases", "oci")
+	cacheOCI, err := umoci.OpenLayout(cacheDir)
+	if err != nil {
+		return err
+	}
+	defer cacheOCI.Close()
+
 	//get descriptorPaths from our image's tag name
 	descriptorPaths, err := oci.ResolveReference(context.Background(), name)
 	if err != nil {
@@ -225,7 +231,7 @@ func GenerateLayerFromOverlayDirs(config types.StackerConfig, name string, layer
 	}
 
 	if len(descriptorPaths) != 1 {
-		return errors.Errorf("bad descriptor %s", tag)
+		return errors.Errorf("bad descriptor %s", name)
 	}
 
 	// Create the mutator.
