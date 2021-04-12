@@ -252,14 +252,27 @@ func (o *overlay) TarExtractLocation(name string) string {
 * new metadata.json
 */
 func (o *overlay) GenerateOverlayDirLayers(name string, overlayDirs types.OverlayDirs) error {
-    err := GenerateLayerFromOverlayDirs(o.config, name, "tar")
+	// here we should generate a layer for each overlayDir
+	// and for each layerType
+    desc, err := GenerateLayerFromOverlayDirs(o.config, name, "tar")
     if err != nil {
     	return err
 	}
+
 	ovl, err := readOverlayMetadata(o.config, name)
 	if err != nil {
 		return err
 	}
+
+	ovl.OverlayDirs = append(ovl.OverlayDirs, desc)
+	
+	log.Debugf("Writing ovl")
+	err = ovl.write(o.config, name)
+	if err != nil {
+		return err
+	}
+
 	log.Debugf("ovl: %#v", ovl)
+
 	return nil
 }

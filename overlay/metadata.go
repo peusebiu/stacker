@@ -73,8 +73,8 @@ func (ovl overlayMetadata) write(config types.StackerConfig, tag string) error {
 	if err != nil {
 		return errors.Wrapf(err, "couldn't marshal overlay metadata")
 	}
-
 	metadataFile := path.Join(config.RootFSDir, tag, "overlay_metadata.json")
+	log.Debugf("writing metadatafile: %s", metadataFile)
 	err = ioutil.WriteFile(metadataFile, content, 0644)
 	if err != nil {
 		return errors.Wrapf(err, "couldn't write overlay metadata %s", metadataFile)
@@ -96,7 +96,7 @@ func (ovl overlayMetadata) lxcRootfsString(config types.StackerConfig, tag strin
 		manifest = m
 		break
 	}
-
+	log.Debugf("manifest in lxcrootfsstring %#v", manifest)
 	lowerdirs := []string{}
 	for _, layer := range manifest.Layers {
 		contents := overlayPath(config, layer.Digest, "overlay")

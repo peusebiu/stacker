@@ -206,60 +206,51 @@ func ConvertAndOutput(config types.StackerConfig, tag, name string, layerType ty
 	return oci.UpdateReference(context.Background(), layerType.LayerName(name), desc)
 }
 
-func GenerateLayerFromOverlayDirs(config types.StackerConfig, name string, layerType types.LayerType) error {
+func GenerateLayerFromOverlayDirs(config types.StackerConfig, name string, layerType types.LayerType) (ispec.Descriptor, error) {
 	oci, err := umoci.OpenLayout(config.OCIDir)
 	if err != nil {
-		return err
+		return ispec.Descriptor{}, err
 	}
 	defer oci.Close()
 
-	//get descriptorPaths from our image's tag name
-	descriptorPaths, err := oci.ResolveReference(context.Background(), name)
-	if err != nil {
-		return err
-	}
-
-	if len(descriptorPaths) == 0 {
-		return errors.Errorf("tag not found: %s", name)
-	}
-
-	if len(descriptorPaths) != 1 {
-		return errors.Errorf("bad descriptor %s", name)
-	}
-
-	// Create the mutator.
-	mutator, err := mutate.New(oci, descriptorPaths[0])
-	if err != nil {
-		return errors.Wrap(err, "create mutator for base image")
-	}
-
-	var meta umoci.Meta
-	meta.Version = umoci.MetaVersion
-
 	tempDest := path.Join(config.RootFSDir, name, "overlay_dirs")
-
+	log.Debugf("Generating layer")
 	blob := layer.GenerateInsertLayer(tempDest, "/", false, nil)
 	defer blob.Close()
-
-	var history *ispec.History
-	if _, err := mutator.Add(context.Background(), ispec.MediaTypeImageLayer, blob, history, mutate.GzipCompressor); err != nil {
-		return errors.Wrap(err, "add diff layer")
-	}
-
-	newDescriptorPath, err := mutator.Commit(context.Background())
+    log.Debugf("PutBlob")
+	layerDigest, layerSize, err := oci.PutBlob(context.Background(), blob)
+	log.Debugf("layerDigest %s", layerDigest)
+	log.Debugf("layerSize %s", layerSize)
 	if err != nil {
-		return errors.Wrap(err, "commit mutated image")
+		return ispec.Descriptor{}, err
+	}
+	log.Debugf("finished")
+
+	layerMediaType := stackeroci.MediaTypeLayerSquashfs
+	if layerType == "tar" {
+		layerMediaType = ispec.MediaTypeImageLayer
 	}
 
-	log.Infof("new image manifest created: %s->%s", newDescriptorPath.Root().Digest, newDescriptorPath.Descriptor().Digest)
+	desc := ispec.Descriptor{
+		MediaType: layerMediaType,
+		Digest: layerDigest,
+		Size: layerSize,
+	}
+	log.Debugf("Desc: %#v", desc)
 
-	if err := oci.UpdateReference(context.Background(), name, newDescriptorPath.Root()); err != nil {
-		return errors.Wrap(err, "add new tag")
+	contents := overlayPath(config, layerDigest, "overlay")
+	log.Debugf("symmlink into %s, %s", contents, layerDigest)
+	// slight hack, but this is much faster than a cp, and the
+	// layers are the same, just in different formats
+	if err = os.MkdirAll(overlayPath(config, layerDigest), 0755); err != nil {
+		return ispec.Descriptor{}, err
+	}
+	err = os.Symlink(tempDest, contents)
+	if err != nil {
+		return ispec.Descriptor{}, err
 	}
 
-	log.Infof("updated tag for image manifest: %s", name)
-	return nil
-
+	return desc, nil
 }
 
 func lookupManifestInDir(dir, name string) (ispec.Manifest, error) {
