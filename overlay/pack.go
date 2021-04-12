@@ -515,6 +515,7 @@ func repackOverlay(config types.StackerConfig, name string, layerTypes []types.L
 	mutated := false
 	// generate blobs for each build layer
 	for _, buildLayer := range ovl.BuiltLayers {
+
 		didMutate, err := generateLayer(config, mutators, buildLayer, layerTypes)
 		if err != nil {
 			return err
@@ -532,7 +533,6 @@ func repackOverlay(config types.StackerConfig, name string, layerTypes []types.L
 					return err
 				}
 			}
-
 			err = ovl.write(config, buildLayer)
 			if err != nil {
 				return err
@@ -543,6 +543,31 @@ func repackOverlay(config types.StackerConfig, name string, layerTypes []types.L
 	didMutate, err := generateLayer(config, mutators, name, layerTypes)
 	if err != nil {
 		return err
+	}
+
+	for _, overlayDirLayer := range ovl.OverlayDirs {
+
+		blob, err := oci.GetBlob(context.Background(), overlayDirLayer.Digest)
+		if err != nil {
+			return err
+		}
+		defer blob.Close()
+		for i, layerType := range layerTypes {
+			desc, err := mutators[i].Add(context.Background(), overlayDirLayer.MediaType, blob, nil, mutate.GzipCompressor)
+			if err != nil {
+				return err
+			}
+			log.Debugf("blob sha: %s", desc.Digest)
+			ovl.Manifests[layerType], err = mutators[i].Manifest(context.Background())
+			if err != nil {
+				return err
+			}
+		}
+		err = ovl.write(config, name)
+		if err != nil {
+			return err
+		}
+		didMutate = true
 	}
 
 	// if we didn't do anything, don't do anything :)

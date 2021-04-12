@@ -265,7 +265,14 @@ func (o *overlay) GenerateOverlayDirLayers(name string, overlayDirs types.Overla
 	}
 
 	ovl.OverlayDirs = append(ovl.OverlayDirs, desc)
-	
+
+	for layerType, manifest := range ovl.Manifests {
+		if layerType == "squashfs" {
+			continue
+		}
+		manifest.Layers = append(manifest.Layers, desc)
+		ovl.Manifests[layerType] = manifest
+	}
 	log.Debugf("Writing ovl")
 	err = ovl.write(o.config, name)
 	if err != nil {
